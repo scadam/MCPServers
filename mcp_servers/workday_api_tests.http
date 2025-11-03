@@ -1,0 +1,92 @@
+# Workday MCP Server HTTP API Tests
+# Use with VS Code REST Client extension
+
+### Variables
+@baseUrl = http://127.0.0.1:8080
+@bearerToken = your_entra_id_bearer_token_here
+
+### Health Check
+GET {{baseUrl}}/health
+Accept: application/json
+
+### List Tools
+GET {{baseUrl}}/tools
+Accept: application/json
+Authorization: Bearer {{bearerToken}}
+
+### Get Worker Profile
+POST {{baseUrl}}/tools/call
+Content-Type: application/json
+Authorization: Bearer {{bearerToken}}
+
+{
+  "name": "get_worker",
+  "arguments": {
+    "auth_token": "{{bearerToken}}"
+  }
+}
+
+### Get Leave Balances  
+POST {{baseUrl}}/tools/call
+Content-Type: application/json
+Authorization: Bearer {{bearerToken}}
+
+{
+  "name": "get_leave_balances",
+  "arguments": {
+    "auth_token": "{{bearerToken}}"
+  }
+}
+
+### Get Direct Reports
+POST {{baseUrl}}/tools/call
+Content-Type: application/json
+Authorization: Bearer {{bearerToken}}
+
+{
+  "name": "get_direct_reports", 
+  "arguments": {
+    "auth_token": "{{bearerToken}}"
+  }
+}
+
+### Get Inbox Tasks
+POST {{baseUrl}}/tools/call
+Content-Type: application/json
+Authorization: Bearer {{bearerToken}}
+
+{
+  "name": "get_inbox_tasks",
+  "arguments": {
+    "auth_token": "{{bearerToken}}"
+  }
+}
+
+### Search Learning Content
+POST {{baseUrl}}/tools/call
+Content-Type: application/json  
+Authorization: Bearer {{bearerToken}}
+
+{
+  "name": "search_learning_content",
+  "arguments": {
+    "auth_token": "{{bearerToken}}",
+    "query": "compliance"
+  }
+}
+
+### Book Leave Request
+POST {{baseUrl}}/tools/call
+Content-Type: application/json
+Authorization: Bearer {{bearerToken}}
+
+{
+  "name": "book_leave",
+  "arguments": {
+    "auth_token": "{{bearerToken}}",
+    "absence_type_id": "your_absence_type_id",
+    "start_date": "2024-12-01",
+    "end_date": "2024-12-05",
+    "comment": "Personal time off"
+  }
+}

@@ -1,0 +1,15 @@
+[
+  {"name": "MCP_SERVER", "value": "workday"},
+  {"name": "WORKDAY_TOKEN_URL", "value": "https://wd2-impl-services1.workday.com/ccx/oauth2/microsoft_dpt6/token"},
+  {"name": "WORKDAY_WORKERS_API_URL", "value": "https://wd2-impl-services1.workday.com/ccx/api/absenceManagement/v1/microsoft_dpt6/workers"},
+  {"name": "LOG_LEVEL", "value": "info"},
+  {"name": "MCP_STREAMABLE_HTTP_PATH", "value": "/mcp/workday"},
+  {"name": "WORKDAY_CLIENT_ID", "secretRef": "workday-client-id"},
+  {"name": "WORKDAY_CLIENT_SECRET", "secretRef": "workday-client-secret"},
+  {"name": "WORKDAY_REFRESH_TOKEN", "secretRef": "workday-refresh-token"},
+  {"name": "AAD_APP_CLIENT_ID", "secretRef": "aad-app-client-id"},
+  {"name": "AAD_APP_TENANT_ID", "secretRef": "aad-app-tenant-id"},
+  {"name": "GRAPH_CLIENT_SECRET", "secretRef": "graph-client-secret"},
+  {"name": "GRAPH_CLIENT_ID", "secretRef": "graph-client-id"},
+  {"name": "GRAPH_TENANT_ID", "secretRef": "graph-tenant-id"}
+]

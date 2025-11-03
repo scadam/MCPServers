@@ -1,0 +1,26 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus"
+    },
+    "environmentName": {
+      "value": "workday-mcp"
+    },
+    "containerAppName": {
+      "value": "workday-mcp-app"
+    },
+    "containerImage": {
+      "value": "ghcr.io/org/workday-mcp:latest"
+    },
+    "envVars": {
+      "value": [
+        {
+          "name": "MCP_SERVER",
+          "value": "workday"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus"
+    },
+    "environmentName": {
+      "value": "workday-mcp"
+    },
+    "containerAppName": {
+      "value": "workday-mcp-app"
+    },
+    "containerImage": {
+      "value": "workdaymcpacr.azurecr.io/workday-mcp:v3"
+    },
+    "containerRegistryServer": {
+      "value": "workdaymcpacr.azurecr.io"
+    },
+    "envVars": {
+      "value": [
+        {
+          "name": "MCP_SERVER",
+          "value": "workday"
+        },
+        {
+          "name": "WORKDAY_TOKEN_URL",
+          "value": "https://wd2-impl-services1.workday.com/ccx/oauth2/microsoft_dpt6/token"
+        },
+        {
+          "name": "WORKDAY_WORKERS_API_URL",
+          "value": "https://wd2-impl-services1.workday.com/ccx/api/absenceManagement/v1/microsoft_dpt6/workers"
+        }
+      ]
+    }
+  }
+}
