@@ -72,7 +72,7 @@ async def _fetch_json(url: str, access_token: str) -> Dict[str, Any]:
         return response.json()
 
 
-async def tool_get_worker(arguments: Dict[str, Any], ctx: Optional[Context] = None) -> Dict[str, Any]:
+async def tool_get_worker(ctx: Optional[Context] = None) -> Dict[str, Any]:
     """Get the current Workday worker profile.
     
     Validates the Entra ID token and retrieves worker data using server's Workday credentials.
@@ -168,7 +168,7 @@ async def _get_time_off_details(access_token: str, workday_id: str) -> List[Dict
     return details
 
 
-async def tool_get_leave_balances(arguments: Dict[str, Any], ctx: Optional[Context] = None) -> Dict[str, Any]:
+async def tool_get_leave_balances(ctx: Optional[Context] = None) -> Dict[str, Any]:
     token = _get_auth_token(ctx)
     worker_context = await build_worker_context(token)
     workday_id = worker_context.workday_id
@@ -211,7 +211,7 @@ async def _fetch_direct_reports(access_token: str, workday_id: str) -> List[Dict
     return reports
 
 
-async def tool_get_direct_reports(arguments: Dict[str, Any], ctx: Optional[Context] = None) -> Dict[str, Any]:
+async def tool_get_direct_reports(ctx: Optional[Context] = None) -> Dict[str, Any]:
     token = _get_auth_token(ctx)
     worker_context = await build_worker_context(token)
     reports = await _fetch_direct_reports(worker_context.workday_access_token, worker_context.workday_id)
@@ -241,7 +241,7 @@ async def _fetch_inbox_tasks(access_token: str, workday_id: str) -> List[Dict[st
     return tasks
 
 
-async def tool_get_inbox_tasks(arguments: Dict[str, Any], ctx: Optional[Context] = None) -> Dict[str, Any]:
+async def tool_get_inbox_tasks(ctx: Optional[Context] = None) -> Dict[str, Any]:
     token = _get_auth_token(ctx)
     worker_context = await build_worker_context(token)
     tasks = await _fetch_inbox_tasks(worker_context.workday_access_token, worker_context.workday_id)
@@ -270,7 +270,7 @@ async def _fetch_learning_assignments(access_token: str, workday_id: str) -> Lis
     return assignments
 
 
-async def tool_get_learning_assignments(arguments: Dict[str, Any], ctx: Optional[Context] = None) -> Dict[str, Any]:
+async def tool_get_learning_assignments(ctx: Optional[Context] = None) -> Dict[str, Any]:
     token = _get_auth_token(ctx)
     worker_context = await build_worker_context(token)
     assignments = await _fetch_learning_assignments(
@@ -299,7 +299,7 @@ async def _fetch_pay_slips(access_token: str, workday_id: str) -> List[Dict[str,
     return pay_slips
 
 
-async def tool_get_pay_slips(arguments: Dict[str, Any], ctx: Optional[Context] = None) -> Dict[str, Any]:
+async def tool_get_pay_slips(ctx: Optional[Context] = None) -> Dict[str, Any]:
     token = _get_auth_token(ctx)
     worker_context = await build_worker_context(token)
     pay_slips = await _fetch_pay_slips(worker_context.workday_access_token, worker_context.workday_id)
@@ -330,7 +330,7 @@ async def _fetch_time_off_entries(access_token: str, workday_id: str) -> List[Di
     return entries
 
 
-async def tool_get_time_off_entries(arguments: Dict[str, Any], ctx: Optional[Context] = None) -> Dict[str, Any]:
+async def tool_get_time_off_entries(ctx: Optional[Context] = None) -> Dict[str, Any]:
     token = _get_auth_token(ctx)
     worker_context = await build_worker_context(token)
     entries = await _fetch_time_off_entries(
@@ -345,16 +345,18 @@ async def _get_default_dates() -> Dict[str, str]:
     return {"startDate": formatted, "endDate": formatted}
 
 
-async def tool_prepare_request_leave(arguments: Dict[str, Any], ctx: Optional[Context] = None) -> Dict[str, Any]:
+async def tool_prepare_request_leave(ctx: Optional[Context] = None, startDate: Optional[str] = None, 
+                                   endDate: Optional[str] = None, quantity: Optional[str] = None, 
+                                   unit: Optional[str] = None, reason: Optional[str] = None) -> Dict[str, Any]:
     token = _get_auth_token(ctx)
     worker_context = await build_worker_context(token)
     default_dates = await _get_default_dates()
     request_params = {
-        "startDate": arguments.get("startDate", default_dates["startDate"]),
-        "endDate": arguments.get("endDate", default_dates["endDate"]),
-        "quantity": arguments.get("quantity", "1"),
-        "unit": arguments.get("unit", "Days"),
-        "reason": arguments.get("reason", "Vacation"),
+        "startDate": startDate or default_dates["startDate"],
+        "endDate": endDate or default_dates["endDate"],
+        "quantity": quantity or "1",
+        "unit": unit or "Days",
+        "reason": reason or "Vacation",
     }
     access_token = worker_context.workday_access_token
     workday_id = worker_context.workday_id
@@ -409,18 +411,16 @@ def _create_days_array(start_date: str, end_date: str, quantity: str, unit: str,
     return days
 
 
-async def tool_book_leave(arguments: Dict[str, Any], ctx: Optional[Context] = None) -> Dict[str, Any]:
+async def tool_book_leave(ctx: Optional[Context] = None, startDate: str = None, endDate: str = None, 
+                        timeOffTypeId: str = None, quantity: str = "8", unit: str = "Hours", 
+                        reason: str = "Time off request") -> Dict[str, Any]:
     token = _get_auth_token(ctx)
     worker_context = await build_worker_context(token)
-    start_date = arguments.get("startDate")
-    end_date = arguments.get("endDate")
-    time_off_type_id = arguments.get("timeOffTypeId")
-    if not start_date or not end_date or not time_off_type_id:
+    
+    if not startDate or not endDate or not timeOffTypeId:
         raise ValueError("startDate, endDate, and timeOffTypeId are required")
-    quantity = arguments.get("quantity", "8")
-    unit = arguments.get("unit", "Hours")
-    reason = arguments.get("reason", "Time off request")
-    days = _create_days_array(start_date, end_date, quantity, unit, reason, time_off_type_id)
+    
+    days = _create_days_array(startDate, endDate, quantity, unit, reason, timeOffTypeId)
     url = (
         "https://wd2-impl-services1.workday.com/ccx/api/absenceManagement/v1/microsoft_dpt6/"
         f"workers/{worker_context.workday_id}/requestTimeOff"
@@ -469,10 +469,9 @@ async def tool_book_leave(arguments: Dict[str, Any], ctx: Optional[Context] = No
     }
 
 
-async def tool_change_business_title(arguments: Dict[str, Any], ctx: Optional[Context] = None) -> Dict[str, Any]:
+async def tool_change_business_title(ctx: Optional[Context] = None, proposedBusinessTitle: str = None) -> Dict[str, Any]:
     token = _get_auth_token(ctx)
-    proposed_title = arguments.get("proposedBusinessTitle")
-    if not proposed_title:
+    if not proposedBusinessTitle:
         raise ValueError("proposedBusinessTitle is required")
     worker_context = await build_worker_context(token)
     url = (
@@ -483,7 +482,7 @@ async def tool_change_business_title(arguments: Dict[str, Any], ctx: Optional[Co
         "Authorization": f"Bearer {worker_context.workday_access_token}",
         "Content-Type": "application/json",
     }
-    payload = {"proposedBusinessTitle": proposed_title}
+    payload = {"proposedBusinessTitle": proposedBusinessTitle}
     async with create_async_client() as client:
         response = await client.post(url, json=payload, headers=headers)
         response.raise_for_status()
@@ -571,13 +570,12 @@ def _flatten_content(content: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-async def tool_search_learning_content(arguments: Dict[str, Any], ctx: Optional[Context] = None) -> Dict[str, Any]:
+async def tool_search_learning_content(ctx: Optional[Context] = None, skills: Optional[List[str]] = None, 
+                                      topics: Optional[List[str]] = None) -> Dict[str, Any]:
     token = _get_auth_token(ctx)
     validator = EntraTokenValidator()
     await validator.validate(token)
     access_token = await get_workday_access_token()
-    skills_arg = arguments.get("skills", [])
-    topics_arg = arguments.get("topics", [])
 
     def _normalize(value: Any) -> List[str]:
         if value is None:
@@ -588,8 +586,8 @@ async def tool_search_learning_content(arguments: Dict[str, Any], ctx: Optional[
             return [str(item) for item in value]
         return [str(value)]
 
-    skills = _normalize(skills_arg)
-    topics = _normalize(topics_arg)
+    skills = _normalize(skills)
+    topics = _normalize(topics)
     content_response = await _search_learning_content(access_token, skills, topics)
     items = content_response.get("data", [])
     enriched = []

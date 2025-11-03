@@ -18,10 +18,18 @@ def build_workday_server() -> FastMCP:
         stateless_http=True,
     )
     
-    # Register tools
+    # Register tools using standard FastMCP approach
     for spec in WORKDAY_TOOL_SPECS:
-        server.tool(name=spec["name"])(spec["func"])
-        LOGGER.info("tool_registered", tool=spec["name"])
+        tool_name = spec["name"]
+        tool_func = spec["func"]
+        
+        # Register tool with description - FastMCP will generate schema from function signature
+        server.tool(
+            name=tool_name,
+            description=spec.get("summary", "")
+        )(tool_func)
+        
+        LOGGER.info("tool_registered", tool=tool_name)
     
     return server
 
