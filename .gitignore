@@ -10,6 +10,29 @@ appPackage/build
 
 # dependencies
 /node_modules
+.venv/
+.env/
+.env.workday
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+*.pyd
+*.so
+*.dylib
+
+# Python build artifacts
+*.egg-info/
+dist/
+build/
+
+# Test caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Editor settings
+.vscode/
 
 # testing
 /coverage
