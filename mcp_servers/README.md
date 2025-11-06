@@ -180,6 +180,112 @@ az acr build `
 
 ---
 
+## 4. Deploy to an Existing Azure Function App
+
+The repository now ships a turnkey Azure Functions payload in `azure_function/`. Use this
+when you already have a Function App provisioned (consumption or premium plan).
+
+### 4.1 Install local tooling (one time)
+
+1. Ensure the Azure CLI is available as described earlier (`az --version`).
+2. Install **Azure Functions Core Tools v4** so you can run the project locally:
+   ```powershell
+   winget install -e --id Microsoft.AzureFunctionsCoreTools
+   ```
+3. Keep using Python 3.11 and the virtual environment configured in Section 1.
+
+### 4.2 Run the Function locally for testing
+
+1. Restore dependencies for development:
+   ```powershell
+   pip install -e .[dev]
+   ```
+2. Seed local settings by copying the sample file that lives alongside the function assets:
+   ```powershell
+   Set-Location azure_function
+   Copy-Item local.settings.sample.json local.settings.json
+   ```
+3. Edit `azure_function/local.settings.json` and populate the same secrets described in
+   Section 1 (Workday OAuth, Entra, Microsoft Graph). For any value you do not need, leave
+   it empty but keep the key in place.
+4. From the `azure_function` directory, start the Azure Functions host:
+   ```powershell
+   func start
+   ```
+   The host listens on `http://localhost:7071`. Any request path is forwarded to the MCP
+   server—for example `http://localhost:7071/mcp` mirrors the HTTP experience from
+   `scripts\run-workday.ps1`.
+5. Issue test requests (PowerShell example) and monitor the console for logs:
+   ```powershell
+   Invoke-WebRequest http://localhost:7071/mcp -Headers @{"mcp-session-id" = [guid]::NewGuid()}
+   ```
+6. Stop the Functions host with **Ctrl+C** when you are done. The standalone scripts in
+   Section 2 continue to work; this addition simply provides another local option.
+
+### 4.3 Configure the Function App in Azure
+
+1. Set or update the application settings on the existing Function App. The following
+   command applies the same keys that the container deployment uses (replace `...` with
+   your secrets):
+   ```powershell
+   az functionapp config appsettings set `
+     --resource-group <rg-name> `
+     --name <function-app-name> `
+     --settings \
+       MCP_SERVER=workday \
+       LOG_LEVEL=info \
+       WORKDAY_CLIENT_ID=... \
+       WORKDAY_CLIENT_SECRET=... \
+       WORKDAY_REFRESH_TOKEN=... \
+       AAD_APP_CLIENT_ID=... \
+       AAD_APP_TENANT_ID=... \
+       GRAPH_CLIENT_ID=... \
+       GRAPH_CLIENT_SECRET=... \
+       GRAPH_TENANT_ID=...
+   ```
+2. Confirm the Function App is running on the Python 3.11 runtime (`FUNCTIONS_WORKER_RUNTIME`
+   should already be `python`). Adjust in the Azure portal if required.
+
+### 4.4 Publish code to the Function App
+
+1. Return to the project root (`mcp_servers/`) and activate your virtual environment.
+2. Run the deployment helper that now lives in `scripts/deploy-function.ps1`. Provide the
+   existing resource group and Function App name:
+   ```powershell
+   scripts\deploy-function.ps1 -ResourceGroup <rg-name> -FunctionApp <function-app-name>
+   ```
+   The script performs the following:
+   - Copies the contents of `azure_function/` into a temporary publish folder.
+   - Bundles the `src/mcp_servers` package alongside the Function entry point.
+   - Installs Python dependencies defined in `azure_function/requirements.txt` into
+     `.python_packages/lib/site-packages` (the layout Azure Functions expects).
+   - Compresses everything into `azure_function/functionapp.zip` and uploads it using
+     `az functionapp deployment source config-zip`.
+3. Wait for the command to complete. A success message (`Deployment complete.`) indicates
+   the ZIP has been accepted by Azure.
+
+### 4.5 Validate the deployed Function
+
+1. Retrieve the default function key. The example below stores it in `$key`:
+   ```powershell
+   $key = az functionapp keys list `
+     --resource-group <rg-name> `
+     --name <function-app-name> `
+     --output tsv `
+     --query "functionKeys.default"
+   ```
+2. Call the production endpoint, including the `code` query parameter and your usual MCP
+   headers. Replace `<app-hostname>` with the Function App URL:
+   ```powershell
+   Invoke-WebRequest "https://<app-hostname>/mcp?code=$key" `
+     -Headers @{"mcp-session-id" = [guid]::NewGuid(); "Authorization" = "Bearer <token>"}
+   ```
+3. Use `az monitor activity-log list` or the Azure portal **Monitor > Logs** blade to view
+   execution traces if you need to troubleshoot. The scripted deployment does not change
+   your existing Container Apps flow—the two options can coexist.
+
+---
+
 ## Extending Beyond Workday
 
 - Create new packages under `src/mcp_servers/<system>` with `helpers.py`, `tools.py`, and

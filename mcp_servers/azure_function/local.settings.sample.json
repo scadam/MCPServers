@@ -1,0 +1,19 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "MCP_SERVER": "workday",
+    "LOG_LEVEL": "info",
+    "WORKDAY_CLIENT_ID": "<workday-client-id>",
+    "WORKDAY_CLIENT_SECRET": "<workday-client-secret>",
+    "WORKDAY_REFRESH_TOKEN": "<workday-refresh-token>",
+    "AAD_APP_CLIENT_ID": "<entra-app-client-id>",
+    "AAD_APP_TENANT_ID": "<entra-tenant-id>",
+    "GRAPH_CLIENT_ID": "<graph-client-id>",
+    "GRAPH_CLIENT_SECRET": "<graph-client-secret>",
+    "GRAPH_TENANT_ID": "<graph-tenant-id>",
+    "WORKDAY_TOKEN_URL": "https://<tenant>.workday.com/v1/token",
+    "WORKDAY_WORKERS_API_URL": "https://<tenant>.workday.com/ccx/api/v1/workers"
+  }
+}
