@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Widget Preview – MCP Servers</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; background: #1e1e1e; color: #ccc; }
+  body.light { background: #f3f3f3; color: #333; }
+  header { padding: 16px 24px; background: #252526; border-bottom: 1px solid #3c3c3c; display: flex; gap: 12px; align-items: center; }
+  body.light header { background: #e8e8e8; border-bottom-color: #d0d0d0; }
+  header h1 { font-size: 16px; color: #569cd6; font-weight: 500; }
+  body.light header h1 { color: #0078d4; }
+  .tab-bar { display: flex; gap: 4px; margin-left: 24px; }
+  .tab { padding: 6px 16px; cursor: pointer; border-radius: 4px 4px 0 0; background: #2d2d2d; color: #999; font-size: 13px; border: 1px solid transparent; }
+  .tab.active { background: #1e1e1e; color: #d4d4d4; border-color: #3c3c3c; border-bottom-color: #1e1e1e; }
+  body.light .tab { background: #e0e0e0; color: #666; }
+  body.light .tab.active { background: #f3f3f3; color: #222; border-color: #d0d0d0; border-bottom-color: #f3f3f3; }
+  .tab:hover { color: #d4d4d4; }
+  body.light .tab:hover { color: #222; }
+  .preview { flex: 1; height: calc(100vh - 56px); }
+  iframe { width: 100%; height: 100%; border: none; background: #fff; }
+  .status { font-size: 11px; color: #6a9955; margin-left: auto; }
+  .theme-toggle {
+    padding: 4px 12px; font-size: 12px; cursor: pointer;
+    background: #3c3c3c; color: #ccc; border: 1px solid #555; border-radius: 4px;
+  }
+  body.light .theme-toggle { background: #d0d0d0; color: #333; border-color: #bbb; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Widget Preview</h1>
+  <div class="tab-bar">
+    <div class="tab active" data-widget="task-list">Task List</div>
+    <div class="tab" data-widget="approval-review">Approval Review</div>
+    <div class="tab" data-widget="worker-profile">Worker Profile</div>
+    <div class="tab" data-widget="incident-list">Incident List</div>
+    <div class="tab" data-widget="create-incident">Create Incident</div>
+    <div class="tab" data-widget="leave-booking">Leave Booking</div>
+    <div class="tab" data-widget="compliance-case">Compliance Case</div>
+    <div class="tab" data-widget="jira-issue">Jira Issue</div>
+    <div class="tab" data-widget="catalog-item">Catalog Item</div>
+    <div class="tab" data-widget="catalog-list">Catalog List</div>
+    <div class="tab" data-widget="update-incident">Update Incident</div>
+    <div class="tab" data-widget="update-task">Update Task</div>
+    <div class="tab" data-widget="change-business-title">Change Title</div>
+    <div class="tab" data-widget="create-project">Create Project</div>
+    <div class="tab" data-widget="crm-account-360">Account 360</div>
+    <div class="tab" data-widget="crm-pipeline">Pipeline</div>
+    <div class="tab" data-widget="crm-opportunity">New Opportunity</div>
+    <div class="tab" data-widget="crm-event">Schedule Event</div>
+  </div>
+  <div class="status" id="status">Loading...</div>
+  <button class="theme-toggle" id="themeToggle">&#x263D; Light</button>
+</header>
+<div class="preview">
+  <iframe id="widget-frame" sandbox="allow-scripts allow-same-origin"></iframe>
+</div>
+
+<script>
+let currentTheme = 'dark';
+const themeToggle = document.getElementById('themeToggle');
+
+themeToggle.addEventListener('click', () => {
+  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  document.body.classList.toggle('light', currentTheme === 'light');
+  themeToggle.innerHTML = currentTheme === 'dark' ? '&#x263D; Light' : '&#x2600; Dark';
+  // Reload current widget so iframe picks up the new color-scheme
+  const active = document.querySelector('.tab.active');
+  if (active) loadWidget(active.dataset.widget);
+});
+
+// Mock data for each widget
+const MOCK_DATA = {
+  "task-list": {
+    items: [
+      { id: "servicenow:approval:A001", system: "servicenow", kind: "approval", title: "Change Request: CHG0000089", summary: "Network switch upgrade for building 4", status: "Requested", priority: "High", dueDate: "2026-02-20", createdDate: "2026-02-10", link: "#", assignee: "John Doe", actions: [{ actionId: "review", label: "Review", requiresReview: true }] },
+      { id: "workday:approval:B002", system: "workday", kind: "approval", title: "Time Off Request", summary: "PTO request for Feb 24-28", status: "Pending", priority: "Normal", dueDate: "2026-02-18", createdDate: "2026-02-12", link: "#", assignee: "Jane Smith", actions: [{ actionId: "review", label: "Review", requiresReview: true }] },
+      { id: "salesforce:task:C003", system: "salesforce", kind: "task", title: "Follow up with Contoso", summary: "Schedule Q1 review meeting", status: "Not Started", priority: "Normal", dueDate: "2026-02-22", createdDate: "2026-02-14", link: "#", assignee: "You" },
+      { id: "jira:task:CHAT-3", system: "jira", kind: "task", title: "Deploy the AI4ALL Colleague Agent", summary: "Deploy to production environment", status: "To Do", priority: "Medium", dueDate: null, createdDate: "2026-02-01", link: "#", assignee: "You" },
+      { id: "workday:task:D004", system: "workday", kind: "task", title: "Complete Benefits Enrollment", summary: "Annual benefits enrollment deadline approaching", status: "In Progress", priority: "High", dueDate: "2026-02-28", createdDate: "2026-02-05", link: "#", assignee: "You" },
+      { id: "servicenow:task:E005", system: "servicenow", kind: "task", title: "INC0000060: Unable to connect to email", summary: "User reports email connectivity issues", status: "Open", priority: "Moderate", dueDate: null, createdDate: "2026-02-13", link: "#", assignee: "You" },
+    ],
+    totalCount: 6,
+    approvalCount: 2,
+    taskCount: 4,
+  },
+  "approval-review": {
+    review: {
+      item: { id: "servicenow:approval:A001", system: "servicenow", kind: "approval", title: "Change Request: CHG0000089", summary: "Network switch upgrade", status: "Requested", priority: "High" },
+      detail: {
+        requested_by: "Bernard Laboy",
+        category: "Network",
+        risk: "Moderate",
+        impact: "Medium",
+        planned_start: "2026-02-20 08:00",
+        planned_end: "2026-02-20 18:00",
+        description: "Replace aging network switches in Building 4 server room with Cisco Catalyst 9300 series. This will affect approximately 200 users during the maintenance window.",
+        justification: "Current switches are EOL and experiencing intermittent failures. Three incidents in the past month.",
+      },
+      nonce: "mock-nonce-abc123",
+      expiresAt: new Date(Date.now() + 900000).toISOString(),
+      provider: "servicenow",
+      approvalId: "A001",
+    },
+  },
+  "worker-profile": {
+    workdayId: "e422b367a006",
+    workerId: "21482",
+    name: "Siva Vasireddy",
+    email: "svasireddy@contoso.com",
+    workerType: "Employee",
+    businessTitle: "System Administrator",
+    location: "Boston",
+    country: "United States of America",
+    manager: "Sarah Chen",
+    hireDate: "2019-03-15",
+  },
+  "incident-list": {
+    total_returned: 3,
+    incidents: [
+      { sys_id: "1", number: "INC0000060", short_description: "Unable to connect to email", state: "Open", priority: "3 - Moderate", urgency: "2 - Medium", assigned_to: "Charlie Whitherspoon" },
+      { sys_id: "2", number: "INC0000061", short_description: "VPN connection drops intermittently", state: "In Progress", priority: "2 - High", urgency: "1 - High", assigned_to: "Beth Anglin" },
+      { sys_id: "3", number: "INC0000062", short_description: "Printer not working on 3rd floor", state: "New", priority: "4 - Low", urgency: "3 - Low", assigned_to: "Unassigned" },
+    ],
+  },
+  "create-incident": {},
+  "compliance-case": {},
+  "jira-issue": {
+    issue: {
+      key: "AMLREV-42",
+      id: "10042",
+      summary: "Investigate suspicious wire transfers from account 8821",
+      description: "Multiple wire transfers exceeding $10,000 threshold detected from account 8821 to offshore entities. Requires AML/KYC review and potential SAR filing.",
+      status: "In Progress",
+      priority: "High",
+      assignee: "Scott Adams",
+      reporter: "Compliance Bot",
+      issueType: "Task",
+      project: "AML Compliance Review",
+      projectKey: "AMLREV",
+      created: "2026-02-10T09:30:00.000Z",
+      updated: "2026-02-15T14:22:00.000Z",
+      duedate: "2026-02-20T00:00:00.000Z",
+      labels: ["compliance", "aml", "urgent"],
+    },
+    comments: [
+      { id: "1001", author: "Compliance Bot", body: "Auto-generated from Salesforce case CC-2026-0042. Three wire transfers flagged: $12,500, $14,200, $11,800.", created: "2026-02-10T09:30:00.000Z" },
+      { id: "1002", author: "Scott Adams", body: "Initiated enhanced due diligence on account holder. Requesting transaction history from correspondent bank.", created: "2026-02-12T11:15:00.000Z" },
+      { id: "1003", author: "Sarah Chen", body: "Priority escalated per compliance committee review. SAR filing deadline is Feb 20.", created: "2026-02-14T16:45:00.000Z" },
+    ],
+    commentCount: 3,
+    transitions: [
+      { id: "21", name: "Done" },
+      { id: "31", name: "Blocked" },
+    ],
+  },
+  "jira-issue-create": {},
+  "catalog-item": {
+    sys_id: "a1b2c3d4e5f6g7h8i9j0",
+    name: "Jabberwocky Vorpal Blade Provisioning",
+    short_description: "Request a vorpal blade for Tulgey Wood operations and Jabberwock defense.",
+    description: "<p>The <strong>Vorpal Blade Provisioning</strong> process equips authorised personnel with enchanted vorpal weaponry for deployment in Tulgey Wood. All requests are subject to Bandersnatch-clearance review.</p><p>Please complete the form below. Some fields may appear or become required based on your selections.</p>",
+    picture: "https://placehold.co/320x240/1a1a2e/22d3ee.png?text=Vorpal+Blade",
+    type: "item",
+    show_quantity: true,
+    show_delivery_time: true,
+    delivery_time: "3 galumphing days",
+    show_price: true,
+    price: "$42.00",
+    mandatory_attachment: false,
+    category: "Enchanted Equipment",
+    catalogs: ["Tulgey Wood Service Catalog"],
+    link: "#",
+    instance_url: "https://jabberwocky.service-now.com",
+    variables: [
+      {
+        id: "var_001", name: "blade_type", label: "Blade Type", type: 5,
+        friendly_type: "select_box", mandatory: true, read_only: false,
+        render_label: true, value: "", displayvalue: "",
+        help_text: "Select the class of vorpal blade required.",
+        max_length: 0, order: 100, active: true,
+        choices: [
+          { label: "Standard Vorpal", value: "standard" },
+          { label: "Manxome-Grade Vorpal", value: "manxome" },
+          { label: "Galumphing Ultralight", value: "ultralight" },
+          { label: "Brillig Ceremonial", value: "ceremonial" }
+        ]
+      },
+      {
+        id: "var_002", name: "urgency", label: "Request Urgency", type: 1,
+        friendly_type: "yes_no", mandatory: true, read_only: false,
+        render_label: true, value: "", displayvalue: "",
+        help_text: "Is this an urgent frabjous-day deployment?",
+        max_length: 0, order: 200, active: true,
+        choices: [
+          { label: "Yes – Frabjous Day", value: "Yes" },
+          { label: "No – Routine", value: "No" }
+        ]
+      },
+      {
+        id: "var_break_1", name: "break_1", label: "", type: 12,
+        friendly_type: "break", mandatory: false, read_only: false,
+        render_label: false, value: "", displayvalue: "",
+        help_text: "", max_length: 0, order: 250, active: true
+      },
+      {
+        id: "var_003", name: "recipient_name", label: "Recipient Full Name", type: 6,
+        friendly_type: "single_line_text", mandatory: true, read_only: false,
+        render_label: true, value: "", displayvalue: "",
+        help_text: "Enter the name of the person who will carry the vorpal blade.",
+        max_length: 100, order: 300, active: true
+      },
+      {
+        id: "var_004", name: "deployment_location", label: "Deployment Location", type: 8,
+        friendly_type: "reference", mandatory: false, read_only: false,
+        render_label: true, value: "", displayvalue: "",
+        help_text: "Select the Tulgey Wood sector for deployment.",
+        max_length: 0, order: 400, active: true,
+        reference: "cmn_location"
+      },
+      {
+        id: "var_005", name: "special_instructions", label: "Special Instructions", type: 2,
+        friendly_type: "multi_line_text", mandatory: false, read_only: false,
+        render_label: true, value: "", displayvalue: "",
+        help_text: "Any additional snicker-snack requirements or Jubjub Bird avoidance notes.",
+        max_length: 500, order: 500, active: true
+      },
+      {
+        id: "var_006", name: "bandersnatch_clearance", label: "Bandersnatch Clearance Obtained", type: 7,
+        friendly_type: "checkbox", mandatory: false, read_only: false,
+        render_label: true, value: "false", displayvalue: "",
+        help_text: "Check if Bandersnatch security clearance has been pre-approved.",
+        max_length: 0, order: 600, active: true
+      },
+      {
+        id: "var_007", name: "deployment_date", label: "Requested Deployment Date", type: 10,
+        friendly_type: "date", mandatory: false, read_only: false,
+        render_label: true, value: "", displayvalue: "",
+        help_text: "Preferred date for blade delivery to Tulgey Wood.",
+        max_length: 0, order: 700, active: true
+      },
+      {
+        id: "var_008", name: "manxome_justification", label: "Manxome-Grade Justification", type: 2,
+        friendly_type: "multi_line_text", mandatory: false, read_only: false,
+        render_label: true, value: "", displayvalue: "",
+        help_text: "Explain why standard vorpal is insufficient. Required for Manxome-Grade blades.",
+        max_length: 1000, order: 800, active: true
+      },
+      {
+        id: "var_009", name: "ceremonial_occasion", label: "Ceremonial Occasion", type: 5,
+        friendly_type: "select_box", mandatory: false, read_only: false,
+        render_label: true, value: "", displayvalue: "",
+        help_text: "Select the occasion for the Brillig Ceremonial blade.",
+        max_length: 0, order: 900, active: true,
+        choices: [
+          { label: "Frabjous Day Celebration", value: "frabjous" },
+          { label: "Borogove Memorial", value: "borogove" },
+          { label: "Tumtum Tree Dedication", value: "tumtum" },
+          { label: "Jabberwock Vanquishing Anniversary", value: "anniversary" }
+        ]
+      }
+    ],
+    ui_policy: [
+      {
+        sys_id: "pol_001",
+        short_description: "Show Manxome justification when Manxome-Grade selected",
+        onload: true,
+        reverse: true,
+        conditions: [
+          { field: "IO:var_001", oper: "=", value: "manxome" }
+        ],
+        actions: [
+          { name: "IO:var_008", visible: "true", mandatory: "true", disabled: "false" }
+        ]
+      },
+      {
+        sys_id: "pol_002",
+        short_description: "Show Ceremonial occasion when Brillig Ceremonial selected",
+        onload: true,
+        reverse: true,
+        conditions: [
+          { field: "IO:var_001", oper: "=", value: "ceremonial" }
+        ],
+        actions: [
+          { name: "IO:var_009", visible: "true", mandatory: "true", disabled: "false" }
+        ]
+      },
+      {
+        sys_id: "pol_003",
+        short_description: "Make deployment date mandatory when urgent",
+        onload: true,
+        reverse: true,
+        conditions: [
+          { field: "IO:var_002", oper: "=", value: "Yes" }
+        ],
+        actions: [
+          { name: "IO:var_007", mandatory: "true" }
+        ]
+      }
+    ]
+  },
+  "leave-booking": {
+    eligibleAbsenceTypes: [
+      { name: "ESS Sick Time Off (Hours)", id: "sick-001", unit: "Hours", category: "Time Off", group: "Time Off" },
+      { name: "Floating Holiday (Hours)", id: "float-002", unit: "Hours", category: "Time Off", group: "Time Off" },
+      { name: "Vacation (Hours)", id: "vac-003", unit: "Hours", category: "Time Off", group: "Other Absence Types" },
+      { name: "Sick (Hours)", id: "sick-004", unit: "Hours", category: "Time Off", group: "Other Absence Types" },
+      { name: "Bereavement Leave", id: "ber-005", unit: "Days", category: "Leave of Absence Type", group: "Leave of Absence" },
+    ],
+    leaveBalances: [
+      { planName: "ESS Sick Time Off", planId: "p1", balance: "12", unit: "Hours", effectiveDate: "2026-02-15", timeOffTypes: "(ESS Sick Time Off (Hours))" },
+      { planName: "Floating Holiday", planId: "p2", balance: "16", unit: "Hours", effectiveDate: "2026-02-15", timeOffTypes: "(Floating Holiday (Hours))" },
+      { planName: "Paid Time Off", planId: "p3", balance: "80.09", unit: "Hours", effectiveDate: "2026-02-15", timeOffTypes: "(Sick (Hours), Vacation (Hours))" },
+      { planName: "Vacation", planId: "p4", balance: "0", unit: "Hours", effectiveDate: "2026-02-15", timeOffTypes: "(Vacation (Hours))" },
+    ],
+    bookedTimeOff: [
+      { date: "2026-02-21", timeOffType: "Vacation (Hours)", quantity: "8", unit: "Hours", status: "Submitted", comment: "Family trip" },
+      { date: "2026-03-10", timeOffType: "Vacation (Hours)", quantity: "8", unit: "Hours", status: "Submitted", comment: "Personal day" },
+      { date: "2026-03-11", timeOffType: "Vacation (Hours)", quantity: "8", unit: "Hours", status: "Submitted", comment: "Personal day" },
+      { date: "2026-03-25", timeOffType: "Floating Holiday (Hours)", quantity: "8", unit: "Hours", status: "Approved", comment: "Holiday" },
+      { date: "2026-04-14", timeOffType: "Vacation (Hours)", quantity: "8", unit: "Hours", status: "Submitted", comment: "Spring break" },
+      { date: "2026-04-15", timeOffType: "Vacation (Hours)", quantity: "8", unit: "Hours", status: "Submitted", comment: "Spring break" },
+    ],
+    bookingGuidance: {
+      timeFormat: "ISO 8601 with timezone",
+      defaultWorkingHours: { start: "08:00:00.000Z", end: "17:00:00.000Z" },
+      quantityCalculation: { forHours: "Use dailyDefaultQuantity * number of days", forDays: "Use 1 per day requested" },
+    },
+  },
+  "update-incident": {
+    incident: {
+      sys_id: "b1234abcde5f678",
+      number: "INC0010006",
+      short_description: "VPN connection drops intermittently",
+      description: "User reports VPN disconnects every 30–60 minutes when working from home. Issue started after Windows security update on Feb 14.",
+      state: "2",
+      priority: "2",
+      urgency: "2",
+      impact: "2",
+      category: "Network",
+      subcategory: "VPN",
+      assigned_to: "Beth Anglin",
+      assignment_group: "Network Team",
+    },
+    link: "https://dev12345.service-now.com/incident.do?sysparm_query=number=INC0010006",
+  },
+  "update-task": {
+    toolOutput: {
+      task: {
+        Id: "00T5e00003abcDEFGHI",
+        Subject: "Follow up with Contoso re: Q1 review",
+        Status: "Not Started",
+        Priority: "Normal",
+        Description: "Schedule Q1 business review meeting with Contoso account team. Confirm agenda and attendees before end of February.",
+      },
+    },
+  },
+  "change-business-title": {
+    success: true,
+    worker: {
+      name: "Siva Vasireddy",
+      businessTitle: "System Administrator",
+      workerType: "Employee",
+      supervisoryOrganization: "Infrastructure Services",
+      location: "Boston",
+    },
+  },
+  "create-project": {
+    toolInput: {
+      name: "Customer Onboarding",
+      project_type: "software",
+      description: "Tracks tasks and milestones for new customer onboarding.",
+    },
+    toolOutput: {},
+  },
+  "catalog-list": {
+    total_returned: 6,
+    catalog: "IT Service Catalog",
+    items: [
+      { sys_id: "cat001", name: "Laptop Request", short_description: "Request a new laptop or replacement device.", category: "Hardware", price: "$0.00", picture: "https://placehold.co/80x60/1a1a2e/22d3ee.png?text=Laptop" },
+      { sys_id: "cat002", name: "Software License", short_description: "Request a new software license for approved applications.", category: "Software", price: "$25.00", picture: "https://placehold.co/80x60/1a2e1a/22ee77.png?text=SW" },
+      { sys_id: "cat003", name: "VPN Access", short_description: "Request VPN credentials for remote access.", category: "Network", price: "$0.00", picture: "" },
+      { sys_id: "cat004", name: "Security Badge", short_description: "Request a new or replacement security badge.", category: "Facilities", price: "$0.00", picture: "https://placehold.co/80x60/2e1a1a/ee3322.png?text=Badge" },
+      { sys_id: "cat005", name: "Office Chair Ergonomic", short_description: "Request an ergonomic office chair assessment and chair.", category: "Facilities", price: "$150.00", picture: "" },
+      { sys_id: "cat006", name: "Monitor Upgrade", short_description: "Request an additional or replacement monitor.", category: "Hardware", price: "$0.00", picture: "https://placehold.co/80x60/1a1a2e/aaaaee.png?text=Monitor" },
+    ],
+  },
+  "crm-account-360": {
+    account: {
+      Id: "001xx000001gERaAAM",
+      Name: "Contoso Ltd",
+      Industry: "Technology",
+      BillingCity: "Seattle",
+      BillingState: "WA",
+      Phone: "+1-206-555-0100",
+      AnnualRevenue: 15000000,
+      NumberOfEmployees: 450,
+      Type: "Customer - Direct",
+      Owner: "Scott Adams",
+    },
+    contacts: [
+      { Id: "003xx001", Name: "Alice Johnson", Title: "CTO", Email: "ajohnson@contoso.com", Phone: "+1-206-555-0101", Department: "Engineering" },
+      { Id: "003xx002", Name: "Bob Williams", Title: "VP Engineering", Email: "bwilliams@contoso.com", Phone: "+1-206-555-0102", Department: "Engineering" },
+      { Id: "003xx003", Name: "Carol Davis", Title: "Procurement Manager", Email: "cdavis@contoso.com", Phone: "+1-206-555-0103", Department: "Operations" },
+      { Id: "003xx004", Name: "David Kim", Title: "IT Director", Email: "dkim@contoso.com", Phone: "+1-206-555-0104", Department: "IT" },
+    ],
+    opportunities: [
+      { Id: "006xx001", Name: "Contoso Platform Expansion", Stage: "Proposal/Price Quote", Amount: 250000, CloseDate: "2026-03-31", Owner: "Scott Adams", Probability: 60 },
+      { Id: "006xx002", Name: "Contoso Security Upgrade", Stage: "Needs Analysis", Amount: 85000, CloseDate: "2026-04-15", Owner: "Scott Adams", Probability: 20 },
+      { Id: "006xx003", Name: "Contoso Cloud Migration", Stage: "Closed Won", Amount: 320000, CloseDate: "2026-01-31", Owner: "Scott Adams", Probability: 100 },
+    ],
+    events: [
+      { Id: "00Uxx001", Subject: "Contoso QBR – Q1 2026", StartDateTime: "2026-03-05T14:00:00Z", EndDateTime: "2026-03-05T15:00:00Z", Location: "Microsoft Teams", Owner: "Scott Adams" },
+      { Id: "00Uxx002", Subject: "Platform Demo Walkthrough", StartDateTime: "2026-03-12T16:00:00Z", EndDateTime: "2026-03-12T17:00:00Z", Location: "Contoso HQ, Seattle", Owner: "Scott Adams" },
+    ],
+    cases: [
+      { Id: "500xx001", CaseNumber: "00028042", Subject: "API Integration Issue", Status: "Working", Priority: "High", CreatedDate: "2026-02-10T08:00:00Z" },
+    ],
+    tasks: [
+      { Id: "00Txx001", Subject: "Send Q1 proposal", Status: "Not Started", Priority: "High", DueDate: "2026-03-01", Owner: "Scott Adams" },
+      { Id: "00Txx002", Subject: "Follow up post-demo", Status: "In Progress", Priority: "Normal", DueDate: "2026-02-28", Owner: "Scott Adams" },
+    ],
+  },
+  "crm-pipeline": {
+    stages: [
+      { stage: "Prospecting", count: 5, amount: 125000, weighted_amount: 12500 },
+      { stage: "Qualification", count: 8, amount: 430000, weighted_amount: 86000 },
+      { stage: "Needs Analysis", count: 6, amount: 310000, weighted_amount: 93000 },
+      { stage: "Value Proposition", count: 4, amount: 520000, weighted_amount: 208000 },
+      { stage: "Proposal/Price Quote", count: 7, amount: 680000, weighted_amount: 408000 },
+      { stage: "Negotiation/Review", count: 3, amount: 390000, weighted_amount: 312000 },
+    ],
+    total_open: 33,
+    total_pipeline: 2455000,
+    total_weighted: 1119500,
+    top_opportunities: [
+      { Id: "006xx001", Name: "Contoso Platform Expansion", Stage: "Proposal/Price Quote", Amount: 250000, CloseDate: "2026-03-31", Account: "Contoso Ltd", Probability: 60, Owner: "Scott Adams" },
+      { Id: "006xx004", Name: "Fabrikam Cloud Migration", Stage: "Negotiation/Review", Amount: 390000, CloseDate: "2026-03-15", Account: "Fabrikam Inc", Probability: 80, Owner: "Scott Adams" },
+      { Id: "006xx005", Name: "Northwind Data Analytics", Stage: "Value Proposition", Amount: 175000, CloseDate: "2026-04-30", Account: "Northwind Traders", Probability: 50, Owner: "Scott Adams" },
+      { Id: "006xx006", Name: "Adventure Works ERP", Stage: "Qualification", Amount: 520000, CloseDate: "2026-05-31", Account: "Adventure Works", Probability: 20, Owner: "Scott Adams" },
+      { Id: "006xx007", Name: "Woodgrove Banking Suite", Stage: "Value Proposition", Amount: 340000, CloseDate: "2026-04-15", Account: "Woodgrove Bank", Probability: 50, Owner: "Scott Adams" },
+    ],
+  },
+  "crm-opportunity": {
+    toolInput: { account_id: "001xx000001gERaAAM", account_name: "Contoso Ltd" },
+    toolOutput: {},
+  },
+  "crm-event": {
+    toolInput: {
+      opportunity_id: "006xx001",
+      opportunity_name: "Contoso Platform Expansion",
+      account_id: "001xx000001gERaAAM",
+      account_name: "Contoso Ltd",
+      contact_id: "003xx001",
+    },
+    toolOutput: {},
+  },
+};
+
+// Map widget names to HTML files
+const WIDGET_FILES = {
+  "task-list": "src/mcp_servers/ui/widget/task-list.html",
+  "approval-review": "src/mcp_servers/ui/widget/approval-review.html",
+  "worker-profile": "src/mcp_servers/ui/widget/worker-profile.html",
+  "incident-list": "src/mcp_servers/ui/widget/incident-list.html",
+  "create-incident": "src/mcp_servers/ui/widget/create-incident.html",
+  "leave-booking": "src/mcp_servers/ui/widget/leave-booking.html",
+  "compliance-case": "src/mcp_servers/ui/widget/compliance-case.html",
+  "jira-issue": "src/mcp_servers/ui/widget/jira-issue.html",
+  "jira-issue-create": "src/mcp_servers/ui/widget/jira-issue.html",
+  "catalog-item": "src/mcp_servers/ui/widget/catalog-item.html",
+  "update-incident": "src/mcp_servers/ui/widget/update-incident.html",
+  "update-task": "src/mcp_servers/ui/widget/update-task.html",
+  "change-business-title": "src/mcp_servers/ui/widget/change-business-title.html",
+  "create-project": "src/mcp_servers/ui/widget/create-project.html",
+  "catalog-list": "src/mcp_servers/ui/widget/catalog-list.html",
+  "crm-account-360": "src/mcp_servers/ui/widget/crm-account-360.html",
+  "crm-pipeline": "src/mcp_servers/ui/widget/crm-pipeline.html",
+  "crm-opportunity": "src/mcp_servers/ui/widget/crm-opportunity.html",
+  "crm-event": "src/mcp_servers/ui/widget/crm-event.html",
+};
+
+const frame = document.getElementById("widget-frame");
+const statusEl = document.getElementById("status");
+
+function loadWidget(name) {
+  // Update active tab
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.widget === name));
+
+  // Read the HTML file and inject mock openai globals
+  const filePath = WIDGET_FILES[name];
+  fetch(`/widget-file?path=${encodeURIComponent(filePath)}`)
+    .then(r => {
+      if (!r.ok) throw new Error(`${r.status} loading ${filePath}`);
+      return r.text();
+    })
+    .then(html => {
+      const mockEntry = MOCK_DATA[name] || {};
+      // Support either { toolOutput: {...}, toolInput: {...} } or a flat toolOutput-only object
+      const hasToolInput = 'toolInput' in mockEntry || 'toolOutput' in mockEntry;
+      const toolOutput = hasToolInput ? (mockEntry.toolOutput || {}) : mockEntry;
+      const toolInput = mockEntry.toolInput || {};
+      // Inject the mock window.openai before the widget's own scripts
+      const injection = `<script>
+        window.openai = {
+          toolInput: ${JSON.stringify(toolInput)},
+          toolOutput: ${JSON.stringify(toolOutput)},
+          callTool: function(name, args) {
+            console.log('[Mock callTool]', name, JSON.stringify(args));
+            // Catalog-aware mock responses
+            if (name === 'search_reference_values') {
+              return new Promise(function(r) { setTimeout(function() {
+                r({ results: [
+                  { sys_id: 'loc_001', name: 'Tulgey Wood – Sector Alpha' },
+                  { sys_id: 'loc_002', name: 'Tulgey Wood – Sector Bravo' },
+                  { sys_id: 'loc_003', name: 'Tumtum Tree Clearing' },
+                  { sys_id: 'loc_004', name: 'Borogove Meadow' },
+                  { sys_id: 'loc_005', name: 'Mimsy Outpost' },
+                ].filter(function(i) { return i.name.toLowerCase().indexOf((args.search || '').toLowerCase()) >= 0; }) });
+              }, 400); });
+            }
+            if (name === 'get_cart') {
+              return Promise.resolve({ items: [], subtotal: '$0.00' });
+            }
+            if (name === 'order_catalog_item') {
+              return new Promise(function(r) { setTimeout(function() {
+                r({ success: true, request_number: 'REQ0041234', request_id: 'mock_req_id', link: '#' });
+              }, 800); });
+            }
+            if (name === 'add_to_cart') {
+              return new Promise(function(r) { setTimeout(function() {
+                r({ success: true, cart_item_id: 'mock_cart_001' });
+              }, 500); });
+            }
+            if (name === 'update_incident') {
+              return new Promise(function(r) { setTimeout(function() {
+                r({ success: true, number: args.number, updated: args });
+              }, 600); });
+            }
+            if (name === 'update_task') {
+              return new Promise(function(r) { setTimeout(function() {
+                r({ success: true, task: Object.assign({ Id: args.task_id, Subject: 'Updated Task', Status: 'In Progress', Priority: 'Normal' }, args) });
+              }, 600); });
+            }
+            if (name === 'create_project') {
+              return new Promise(function(r) { setTimeout(function() {
+                r({ success: true, project: { key: args.key, name: args.name, url: '#', id: 'mock-proj-001' } });
+              }, 700); });
+            }
+            if (name === 'change_business_title') {
+              return new Promise(function(r) { setTimeout(function() {
+                r({ success: true, newTitle: args.proposedBusinessTitle });
+              }, 500); });
+            }
+            if (name === 'create_opportunity') {
+              return new Promise(function(r) { setTimeout(function() {
+                r({ success: true, id: '006xx' + Date.now(), name: args.name || 'New Opportunity', url: '#', stage: args.stage_name || 'Prospecting' });
+              }, 700); });
+            }
+            if (name === 'create_opportunity_task') {
+              return new Promise(function(r) { setTimeout(function() {
+                r({ success: true, id: '00T' + Date.now(), subject: args.subject || 'New Task', status: 'Not Started' });
+              }, 500); });
+            }
+            if (name === 'create_event') {
+              return new Promise(function(r) { setTimeout(function() {
+                r({ success: true, id: '00U' + Date.now(), subject: args.subject || 'New Event', url: '#' });
+              }, 700); });
+            }
+            if (name === 'get_catalog_item') {
+              return new Promise(function(r) { setTimeout(function() {
+                r({ sys_id: args.sys_id, name: 'Catalog Item', picture: 'https://placehold.co/80x60/1a1a2e/22d3ee.png?text=Item', short_description: 'Loaded details.' });
+              }, 400); });
+            }
+            // Default
+            var msg = 'Mock callTool: ' + name + '(' + JSON.stringify(args) + ')';
+            alert(msg);
+            return Promise.resolve({ status: 'mocked' });
+          },
+          sendFollowUpMessage: function(msg) {
+            console.log('[Mock sendFollowUpMessage]', msg);
+          },
+          notifyIntrinsicHeight: function(h) { /* no-op in preview */ },
+          requestDisplayMode: function(opts) {
+            console.log('[Mock requestDisplayMode]', opts);
+            return Promise.resolve();
+          },
+        };
+      <\/script>`;
+      // Insert injection right after <head>, and set data-theme on <html> to control the widget theme
+      let injectedHtml = html.replace(/<head[^>]*>/i, '$&' + injection);
+      injectedHtml = injectedHtml.replace(/<html[^>]*>/i, `<html data-theme="${currentTheme}">`);
+      frame.srcdoc = injectedHtml;
+      statusEl.textContent = `Loaded: ${name}`;
+    })
+    .catch(err => {
+      statusEl.textContent = `Error: ${err.message}`;
+      frame.srcdoc = `<pre style="color:red;padding:20px">${err.message}</pre>`;
+    });
+}
+
+// Tab click handler
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => loadWidget(tab.dataset.widget));
+});
+
+// Load first widget
+loadWidget("task-list");
+</script>
+</body>
+</html>

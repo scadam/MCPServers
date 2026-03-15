@@ -4,10 +4,10 @@ param location string
 @description('Base name for the Container Apps environment.')
 param environmentName string
 
-@description('Name for the Container App that will host the MCP server.')
+@description('Name for the Container App that will host the MCP servers.')
 param containerAppName string
 
-@description('Fully qualified container image reference (e.g., ghcr.io/org/workday-mcp:latest).')
+@description('Fully qualified container image reference (e.g., ghcr.io/org/m365copilot-mcp:latest).')
 param containerImage string
 
 @description('Container registry server hostname (e.g., myregistry.azurecr.io).')
@@ -98,7 +98,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-02-02-preview' = {
       containers: [
         {
           image: containerImage
-          name: 'workday-mcp'
+          name: 'mcp-servers'
           resources: {
             cpu: 1
             memory: '2Gi'

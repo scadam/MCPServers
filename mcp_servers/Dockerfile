@@ -17,4 +17,4 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY src ./src
 
-ENTRYPOINT ["python", "-m", "mcp_servers.cli", "workday", "--transport", "http", "--host", "0.0.0.0", "--port", "8080"]
+ENTRYPOINT ["python", "-m", "mcp_servers.cli", "all", "--transport", "both", "--host", "0.0.0.0", "--port", "8080"]

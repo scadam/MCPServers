@@ -1,0 +1,282 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #0f172a;
+  background-color: #f8fafc;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #f8fafc 0%, #e2e8f0 85%);
+}
+
+main {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 3rem;
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+
+header {
+  margin-bottom: 1.5rem;
+}
+
+header h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 3vw, 2.2rem);
+}
+
+header p {
+  margin: 0.4rem 0 0;
+  color: #475569;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6366f1;
+}
+
+/* ── Form chrome ─────────────────────────────────────────── */
+
+.incident-form fieldset {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  margin: 0 0 1rem;
+  background: #fff;
+}
+
+.incident-form legend {
+  font-weight: 600;
+  font-size: 1rem;
+  padding: 0 0.5rem;
+  color: #334155;
+}
+
+/* ── Two-column grid ─────────────────────────────────────── */
+
+.form-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.form-grid.two-col {
+  grid-template-columns: 1fr 1fr;
+}
+
+@media (max-width: 600px) {
+  .form-grid.two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Field styling ───────────────────────────────────────── */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.field.full-width {
+  margin-top: 1rem;
+}
+
+.field label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.field input,
+.field select,
+.field textarea {
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  background: #f8fafc;
+  color: #0f172a;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+/* ── Service-desk expansion ──────────────────────────────── */
+
+.service-desk {
+  margin: 0 0 1rem;
+}
+
+.service-desk summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.6rem 0;
+  color: #6366f1;
+  user-select: none;
+}
+
+.service-desk summary:hover {
+  text-decoration: underline;
+}
+
+.service-desk fieldset {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  margin: 0;
+  background: #fff;
+}
+
+/* ── Submit / actions ────────────────────────────────────── */
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+button {
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.6rem 1.5rem;
+  border: none;
+  border-radius: 0.6rem;
+  background: #6366f1;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+button:hover:not(:disabled) {
+  background: #4f46e5;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Error ───────────────────────────────────────────────── */
+
+.error {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+}
+
+/* ── Success card ────────────────────────────────────────── */
+
+.success-card {
+  background: #fff;
+  border-radius: 1.25rem;
+  padding: 2rem;
+  box-shadow: 0 15px 45px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  text-align: center;
+}
+
+.check-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 0.75rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #fff;
+  font-size: 2rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.success-card h2 {
+  margin: 0 0 0.25rem;
+}
+
+.incident-number {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #6366f1;
+  margin: 0 0 1.25rem;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  text-align: left;
+  margin-bottom: 1.25rem;
+}
+
+.summary-field {
+  padding: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 0.75rem;
+  background: #f8fafc;
+}
+
+.summary-field .label {
+  display: block;
+  font-size: 0.78rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.summary-field .value {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-top: 0.2rem;
+}
+
+.sn-link {
+  display: inline-block;
+  font-weight: 600;
+  color: #6366f1;
+  text-decoration: none;
+}
+
+.sn-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Footer ──────────────────────────────────────────────── */
+
+footer {
+  margin-top: 2rem;
+  text-align: center;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+footer span {
+  color: #6366f1;
+  font-weight: 600;
+}

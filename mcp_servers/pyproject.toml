@@ -13,12 +13,13 @@ authors = [
 ]
 license = { text = "MIT" }
 dependencies = [
-  "mcp>=0.1.0",
+  "fastmcp>=2.0.0",
   "httpx>=0.27.0",
   "PyJWT>=2.9.0",
   "jwcrypto>=1.5.6",
   "python-dotenv>=1.0.1",
   "pydantic>=2.6.4",
+  "pydantic-settings>=2.0.0",
   "structlog>=24.1.0",
   "tenacity>=8.3.0"
 ]
@@ -35,6 +36,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+mcp_servers = ["ui/widget/*.html"]
 
 [tool.ruff]
 line-length = 100

@@ -1,17 +1,17 @@
 """Workday MCP tool implementations."""
 
-from __future__ import annotations
-
 import asyncio
+import json
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
-from mcp.server.fastmcp import Context
+from fastmcp import Context
 
 from ..auth import EntraTokenValidator
 from ..http import create_async_client
 from ..logging import get_logger
-from .helpers import build_worker_context, get_workday_access_token
+from ..settings import load_workday_oauth_settings
+from .helpers import build_worker_context, build_worker_context_anonymous, get_workday_access_token
 
 LOGGER = get_logger(__name__)
 
@@ -37,6 +37,21 @@ def _get_auth_token(ctx: Optional[Context] = None) -> str:
 
     LOGGER.debug("auth_token_resolved_from_header")
     return token
+
+
+async def _build_worker_context_with_optional_auth(ctx: Optional[Context] = None):
+    """Build worker context using anonymous mode if configured, otherwise use token authentication."""
+    settings = load_workday_oauth_settings()
+    
+    # Check if anonymous mode is configured
+    if settings.anonymous_employee_id:
+        LOGGER.info("using_anonymous_mode", employee_id=settings.anonymous_employee_id)
+        return await build_worker_context_anonymous(settings.anonymous_employee_id)
+    
+    # Fall back to authenticated mode
+    LOGGER.info("using_authenticated_mode")
+    entra_token = _get_auth_token(ctx)
+    return await build_worker_context(entra_token)
 
 
 def _transform_worker(worker_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -72,15 +87,20 @@ async def _fetch_json(url: str, access_token: str) -> Dict[str, Any]:
         return response.json()
 
 
-async def tool_get_worker(ctx: Optional[Context] = None) -> Dict[str, Any]:
+def _tool_response(summary: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Return payload dict directly; fastmcp serialises it as structuredContent."""
+    return payload
+
+
+async def tool_get_worker(ctx: Optional[Context] = None) -> Dict:
     """Get the current Workday worker profile.
     
     Validates the Entra ID token and retrieves worker data using server's Workday credentials.
     """
-    entra_token = _get_auth_token(ctx)
-    # Validate Entra ID token and get worker context using server's Workday credentials
-    worker_context = await build_worker_context(entra_token)
-    return _transform_worker(worker_context.worker_data)
+    worker_context = await _build_worker_context_with_optional_auth(ctx)
+    worker = _transform_worker(worker_context.worker_data)
+    worker["_widget_hint"] = "Worker profile is ready."
+    return worker
 
 
 async def _get_leave_balances(access_token: str, workday_id: str) -> List[Dict[str, Any]]:
@@ -168,9 +188,8 @@ async def _get_time_off_details(access_token: str, workday_id: str) -> List[Dict
     return details
 
 
-async def tool_get_leave_balances(ctx: Optional[Context] = None) -> Dict[str, Any]:
-    token = _get_auth_token(ctx)
-    worker_context = await build_worker_context(token)
+async def tool_get_leave_balances(ctx: Optional[Context] = None) -> Dict:
+    worker_context = await _build_worker_context_with_optional_auth(ctx)
     workday_id = worker_context.workday_id
     access_token = worker_context.workday_access_token
     leave_balances, eligible_absence_types, leaves_of_absence, booked_time_off = await asyncio.gather(
@@ -179,13 +198,14 @@ async def tool_get_leave_balances(ctx: Optional[Context] = None) -> Dict[str, An
         _get_leaves_of_absence(access_token, workday_id),
         _get_time_off_details(access_token, workday_id),
     )
-    return {
+    payload = {
         "success": True,
         "leaveBalances": leave_balances,
         "eligibleAbsenceTypes": eligible_absence_types,
         "leavesOfAbsence": leaves_of_absence,
         "bookedTimeOff": booked_time_off,
     }
+    return _tool_response("Retrieve leave balances and related data.", payload)
 
 
 async def _fetch_direct_reports(access_token: str, workday_id: str) -> List[Dict[str, Any]]:
@@ -211,11 +231,29 @@ async def _fetch_direct_reports(access_token: str, workday_id: str) -> List[Dict
     return reports
 
 
-async def tool_get_direct_reports(ctx: Optional[Context] = None) -> Dict[str, Any]:
-    token = _get_auth_token(ctx)
-    worker_context = await build_worker_context(token)
+async def tool_get_direct_reports(ctx: Optional[Context] = None) -> Dict:
+    worker_context = await _build_worker_context_with_optional_auth(ctx)
     reports = await _fetch_direct_reports(worker_context.workday_access_token, worker_context.workday_id)
-    return {"success": True, "directReports": reports}
+    payload = {"success": True, "directReports": reports}
+    return _tool_response("List direct reports for the current worker.", payload)
+
+
+# Workday implementation tenant UI base — derived from the API host pattern.
+# wd2-impl-services1.workday.com -> impl.workday.com/{tenant}
+_WORKDAY_TENANT = "microsoft_dpt6"
+_WORKDAY_UI_BASE = f"https://impl.workday.com/{_WORKDAY_TENANT}"
+
+
+def _workday_inbox_url() -> str:
+    """Return the Workday inbox home URL for this tenant."""
+    return f"{_WORKDAY_UI_BASE}/d/home.htmld"
+
+
+def _workday_learning_url(content_id: str) -> Optional[str]:
+    """Return the Workday Learning course-detail URL for a given content ID."""
+    if not content_id:
+        return None
+    return f"{_WORKDAY_UI_BASE}/learning/course-details/{content_id}"
 
 
 async def _fetch_inbox_tasks(access_token: str, workday_id: str) -> List[Dict[str, Any]]:
@@ -225,9 +263,13 @@ async def _fetch_inbox_tasks(access_token: str, workday_id: str) -> List[Dict[st
     )
     data = await _fetch_json(url, access_token)
     tasks = []
+    inbox_url = _workday_inbox_url()
     for item in data.get("data", []):
         tasks.append(
             {
+                "id": item.get("id"),
+                "href": item.get("href"),  # REST API URL (not UI URL)
+                "link": inbox_url,  # Workday SPA has no per-task deep link
                 "assigned": item.get("assigned"),
                 "due": item.get("due"),
                 "initiator": item.get("initiator", {}).get("descriptor"),
@@ -241,11 +283,11 @@ async def _fetch_inbox_tasks(access_token: str, workday_id: str) -> List[Dict[st
     return tasks
 
 
-async def tool_get_inbox_tasks(ctx: Optional[Context] = None) -> Dict[str, Any]:
-    token = _get_auth_token(ctx)
-    worker_context = await build_worker_context(token)
+async def tool_get_inbox_tasks(ctx: Optional[Context] = None) -> Dict:
+    worker_context = await _build_worker_context_with_optional_auth(ctx)
     tasks = await _fetch_inbox_tasks(worker_context.workday_access_token, worker_context.workday_id)
-    return {"success": True, "tasks": tasks}
+    payload = {"success": True, "tasks": tasks}
+    return _tool_response("List Workday inbox tasks for the current worker.", payload)
 
 
 async def _fetch_learning_assignments(access_token: str, workday_id: str) -> List[Dict[str, Any]]:
@@ -257,11 +299,34 @@ async def _fetch_learning_assignments(access_token: str, workday_id: str) -> Lis
     data = await _fetch_json(url, access_token)
     assignments = []
     for item in data.get("Report_Entry", []):
+        # learningContent is now a plain string in the report output
+        content = item.get("learningContent", "")
+        if isinstance(content, dict):
+            # backward-compat: old format returned a {id, descriptor} object
+            content_title = content.get("descriptor", "")
+        else:
+            content_title = str(content) if content else ""
+
+        # Build human-readable duration string, e.g. "47 Minutes" or "2 Days"
+        dur_num = item.get("Course_Duration", "")
+        dur_unit = item.get("Course_Duration_Unit", "")
+        if dur_num and str(dur_num) != "0" and dur_unit:
+            course_duration = f"{dur_num} {dur_unit}"
+        elif dur_num and str(dur_num) != "0":
+            course_duration = str(dur_num)
+        else:
+            course_duration = None
+
         assignments.append(
             {
                 "assignmentStatus": item.get("assignmentStatus"),
                 "dueDate": item.get("dueDate"),
-                "learningContent": item.get("learningContent"),
+                "learningContentTitle": content_title,
+                # contentURL from the report is the direct assignment launch URL
+                "contentURL": item.get("contentURL"),
+                "contentProvider": item.get("contentProvider"),
+                "courseDuration": course_duration,
+                "comments": item.get("Comments"),
                 "overdue": item.get("overdue") == "1",
                 "required": item.get("required") == "1",
                 "workdayId": item.get("workdayId"),
@@ -270,13 +335,13 @@ async def _fetch_learning_assignments(access_token: str, workday_id: str) -> Lis
     return assignments
 
 
-async def tool_get_learning_assignments(ctx: Optional[Context] = None) -> Dict[str, Any]:
-    token = _get_auth_token(ctx)
-    worker_context = await build_worker_context(token)
+async def tool_get_learning_assignments(ctx: Optional[Context] = None) -> Dict:
+    worker_context = await _build_worker_context_with_optional_auth(ctx)
     assignments = await _fetch_learning_assignments(
         worker_context.workday_access_token, worker_context.workday_id
     )
-    return {"success": True, "assignments": assignments, "total": len(assignments)}
+    payload = {"success": True, "assignments": assignments, "total": len(assignments)}
+    return _tool_response("Learning assignments are ready.", payload)
 
 
 async def _fetch_pay_slips(access_token: str, workday_id: str) -> List[Dict[str, Any]]:
@@ -299,11 +364,11 @@ async def _fetch_pay_slips(access_token: str, workday_id: str) -> List[Dict[str,
     return pay_slips
 
 
-async def tool_get_pay_slips(ctx: Optional[Context] = None) -> Dict[str, Any]:
-    token = _get_auth_token(ctx)
-    worker_context = await build_worker_context(token)
+async def tool_get_pay_slips(ctx: Optional[Context] = None) -> Dict:
+    worker_context = await _build_worker_context_with_optional_auth(ctx)
     pay_slips = await _fetch_pay_slips(worker_context.workday_access_token, worker_context.workday_id)
-    return {"success": True, "paySlips": pay_slips}
+    payload = {"success": True, "paySlips": pay_slips}
+    return _tool_response("List recent Workday pay slips.", payload)
 
 
 async def _fetch_time_off_entries(access_token: str, workday_id: str) -> List[Dict[str, Any]]:
@@ -330,13 +395,13 @@ async def _fetch_time_off_entries(access_token: str, workday_id: str) -> List[Di
     return entries
 
 
-async def tool_get_time_off_entries(ctx: Optional[Context] = None) -> Dict[str, Any]:
-    token = _get_auth_token(ctx)
-    worker_context = await build_worker_context(token)
+async def tool_get_time_off_entries(ctx: Optional[Context] = None) -> Dict:
+    worker_context = await _build_worker_context_with_optional_auth(ctx)
     entries = await _fetch_time_off_entries(
         worker_context.workday_access_token, worker_context.workday_id
     )
-    return {"success": True, "timeOffEntries": entries}
+    payload = {"success": True, "timeOffEntries": entries}
+    return _tool_response("List time off entries for the current worker.", payload)
 
 
 async def _get_default_dates() -> Dict[str, str]:
@@ -345,18 +410,24 @@ async def _get_default_dates() -> Dict[str, str]:
     return {"startDate": formatted, "endDate": formatted}
 
 
-async def tool_prepare_request_leave(ctx: Optional[Context] = None, startDate: Optional[str] = None, 
-                                   endDate: Optional[str] = None, quantity: Optional[str] = None, 
-                                   unit: Optional[str] = None, reason: Optional[str] = None) -> Dict[str, Any]:
-    token = _get_auth_token(ctx)
-    worker_context = await build_worker_context(token)
+async def tool_prepare_request_leave(
+    ctx: Optional[Context] = None,
+    startDate: Optional[str] = None,
+    endDate: Optional[str] = None,
+    quantity: Optional[str] = None,
+    unit: Optional[str] = None,
+    reason: Optional[str] = None,
+    timeOffTypeId: Optional[str] = None,
+) -> Dict:
+    worker_context = await _build_worker_context_with_optional_auth(ctx)
     default_dates = await _get_default_dates()
     request_params = {
         "startDate": startDate or default_dates["startDate"],
         "endDate": endDate or default_dates["endDate"],
-        "quantity": quantity or "1",
-        "unit": unit or "Days",
-        "reason": reason or "Vacation",
+        "quantity": quantity or "8",
+        "unit": unit or "Hours",
+        "reason": reason or "Time off request",
+        "timeOffTypeId": timeOffTypeId or "",
     }
     access_token = worker_context.workday_access_token
     workday_id = worker_context.workday_id
@@ -365,8 +436,9 @@ async def tool_prepare_request_leave(ctx: Optional[Context] = None, startDate: O
         _get_leave_balances(access_token, workday_id),
         _get_time_off_details(access_token, workday_id),
     )
-    return {
+    payload = {
         "success": True,
+        "_widget_hint": "The form is ready. Acknowledge with one short sentence (e.g. 'Here is your leave booking form.').",
         "requestParameters": request_params,
         "eligibleAbsenceTypes": eligible_absence_types,
         "leaveBalances": leave_balances,
@@ -381,6 +453,7 @@ async def tool_prepare_request_leave(ctx: Optional[Context] = None, startDate: O
             },
         },
     }
+    return _tool_response("Prepare the data needed to submit a leave request.", payload)
 
 
 def _generate_date_range(start_date: str, end_date: str) -> Iterable[str]:
@@ -395,14 +468,14 @@ def _generate_date_range(start_date: str, end_date: str) -> Iterable[str]:
 def _create_days_array(start_date: str, end_date: str, quantity: str, unit: str, reason: str, time_off_type_id: str) -> List[Dict[str, Any]]:
     days = []
     for day in _generate_date_range(start_date, end_date):
-        daily_quantity = quantity
+        # For Days unit Workday expects 1.0 per day; for Hours use the given quantity
         if unit.lower() == "days":
-            daily_quantity = "8"
+            daily_quantity = 1.0
+        else:
+            daily_quantity = float(quantity) if quantity else 8.0
         days.append(
             {
-                "date": f"{day}T08:00:00.000Z",
-                "start": f"{day}T08:00:00.000Z",
-                "end": f"{day}T17:00:00.000Z",
+                "date": day,  # Workday expects plain YYYY-MM-DD
                 "dailyQuantity": daily_quantity,
                 "comment": reason,
                 "timeOffType": {"id": time_off_type_id},
@@ -411,11 +484,16 @@ def _create_days_array(start_date: str, end_date: str, quantity: str, unit: str,
     return days
 
 
-async def tool_book_leave(ctx: Optional[Context] = None, startDate: str = None, endDate: str = None, 
-                        timeOffTypeId: str = None, quantity: str = "8", unit: str = "Hours", 
-                        reason: str = "Time off request") -> Dict[str, Any]:
-    token = _get_auth_token(ctx)
-    worker_context = await build_worker_context(token)
+async def tool_book_leave(
+    ctx: Optional[Context] = None,
+    startDate: str = None,
+    endDate: str = None,
+    timeOffTypeId: str = None,
+    quantity: str = "8",
+    unit: str = "Hours",
+    reason: str = "Time off request",
+) -> Dict:
+    worker_context = await _build_worker_context_with_optional_auth(ctx)
     
     if not startDate or not endDate or not timeOffTypeId:
         raise ValueError("startDate, endDate, and timeOffTypeId are required")
@@ -446,7 +524,13 @@ async def tool_book_leave(ctx: Optional[Context] = None, startDate: str = None, 
                     message = parsed_body.get("message")
             if not message:
                 message = f"Workday API error {response.status_code}"
-            raise ValueError(message)
+            LOGGER.error(
+                "workday_book_leave_error",
+                status=response.status_code,
+                error=message,
+                body=str(parsed_body)[:500],
+            )
+            return {"success": False, "error": message}
     business_process = parsed_body.get("businessProcessParameters", {}).get(
         "overallBusinessProcess", {}
     ).get("descriptor")
@@ -455,7 +539,7 @@ async def tool_book_leave(ctx: Optional[Context] = None, startDate: str = None, 
     ).get("descriptor")
     days_booked = len(parsed_body.get("days", days))
     total_quantity = sum(float(day.get("dailyQuantity", 0)) for day in days)
-    return {
+    payload = {
         "success": True,
         "message": "Time off request submitted successfully",
         "bookingDetails": {
@@ -467,27 +551,61 @@ async def tool_book_leave(ctx: Optional[Context] = None, startDate: str = None, 
         },
         "workdayResponse": parsed_body,
     }
+    return _tool_response("Submit a leave request to Workday for the current worker.", payload)
 
 
-async def tool_change_business_title(ctx: Optional[Context] = None, proposedBusinessTitle: str = None) -> Dict[str, Any]:
-    token = _get_auth_token(ctx)
-    if not proposedBusinessTitle:
-        raise ValueError("proposedBusinessTitle is required")
-    worker_context = await build_worker_context(token)
-    url = (
-        "https://wd2-impl-services1.workday.com/ccx/api/common/v1/microsoft_dpt6/"
-        f"workers/{worker_context.workday_id}/businessTitleChanges?type=me"
-    )
-    headers = {
-        "Authorization": f"Bearer {worker_context.workday_access_token}",
-        "Content-Type": "application/json",
+async def tool_prepare_change_business_title(ctx: Optional[Context] = None) -> Dict:
+    """Show a form to change the current worker's business title.
+
+    Fetches the worker's current profile and renders the change-business-title
+    widget so the user can enter a new title and submit. The widget handles
+    submission via change_business_title.
+    """
+    worker_context = await _build_worker_context_with_optional_auth(ctx)
+    worker = _transform_worker(worker_context.worker_data)
+    return {
+        "success": True,
+        "_widget_hint": "The form is ready. Acknowledge with one short sentence (e.g. 'Here is your business title change form.').",
+        "worker": worker,
     }
-    payload = {"proposedBusinessTitle": proposedBusinessTitle}
-    async with create_async_client() as client:
-        response = await client.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-    return {"success": True, "message": "Business title change request submitted", "changeDetails": data}
+
+
+async def tool_change_business_title(
+    ctx: Optional[Context] = None, proposedBusinessTitle: str = None
+) -> Dict:
+    if not proposedBusinessTitle:
+        return {"success": False, "error": "proposedBusinessTitle is required"}
+    try:
+        worker_context = await _build_worker_context_with_optional_auth(ctx)
+        url = (
+            "https://wd2-impl-services1.workday.com/ccx/api/common/v1/microsoft_dpt6/"
+            f"workers/{worker_context.workday_id}/businessTitleChanges?type=me"
+        )
+        headers = {
+            "Authorization": f"Bearer {worker_context.workday_access_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {"proposedBusinessTitle": proposedBusinessTitle}
+        async with create_async_client() as client:
+            response = await client.post(url, json=payload, headers=headers)
+            if not response.is_success:
+                body_text = response.text[:500]
+                LOGGER.error(
+                    "workday_change_business_title_http_error",
+                    status_code=response.status_code,
+                    body=body_text,
+                )
+                return {"success": False, "error": f"HTTP {response.status_code}: {body_text}"}
+            data = response.json()
+        result_payload = {
+            "success": True,
+            "message": "Business title change request submitted",
+            "changeDetails": data,
+        }
+        return _tool_response("Request a business title change for the current worker.", result_payload)
+    except Exception as exc:
+        LOGGER.error("workday_change_business_title_error", error=str(exc))
+        return {"success": False, "error": str(exc)}
 
 
 async def _search_learning_content(access_token: str, skills: Iterable[str], topics: Iterable[str]) -> Dict[str, Any]:
@@ -570,11 +688,19 @@ def _flatten_content(content: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-async def tool_search_learning_content(ctx: Optional[Context] = None, skills: Optional[List[str]] = None, 
-                                      topics: Optional[List[str]] = None) -> Dict[str, Any]:
-    token = _get_auth_token(ctx)
-    validator = EntraTokenValidator()
-    await validator.validate(token)
+async def tool_search_learning_content(
+    ctx: Optional[Context] = None,
+    skills: Optional[List[str]] = None,
+    topics: Optional[List[str]] = None,
+) -> Dict:
+    settings = load_workday_oauth_settings()
+    
+    # Validate token if not in anonymous mode
+    if not settings.anonymous_employee_id:
+        token = _get_auth_token(ctx)
+        validator = EntraTokenValidator()
+        await validator.validate(token)
+    
     access_token = await get_workday_access_token()
 
     def _normalize(value: Any) -> List[str]:
@@ -600,19 +726,184 @@ async def tool_search_learning_content(ctx: Optional[Context] = None, skills: Op
             LOGGER.warning("lesson_fetch_failed", content_id=item.get("id"), error=str(exc))
             flattened["lessons"] = []
         enriched.append(flattened)
-    return {"success": True, "content": enriched, "total": len(enriched)}
+    payload = {"success": True, "content": enriched, "total": len(enriched)}
+    return _tool_response("Search Workday learning content and fetch associated lessons.", payload)
+
+
+# ── Provider functions for TaskServer integration ───────────────────
+
+
+async def provider_list_tasks(ctx=None) -> List[Dict[str, Any]]:
+    """List Workday inbox tasks that are NOT approvals.
+
+    Returns raw inbox task data for TaskServer normalization.
+    Non-approval inbox tasks are regular tasks (impl notes §3).
+    """
+    try:
+        worker_context = await _build_worker_context_with_optional_auth(ctx)
+    except Exception:  # noqa: BLE001
+        LOGGER.debug("workday_auth_not_available_for_tasks")
+        return []
+    tasks = await _fetch_inbox_tasks(
+        worker_context.workday_access_token, worker_context.workday_id
+    )
+    return [t for t in tasks if t.get("stepType") != "Approval"]
+
+
+async def provider_list_approvals(ctx=None) -> List[Dict[str, Any]]:
+    """List Workday inbox tasks where stepType is Approval.
+
+    Only inbox tasks with stepType == "Approval" are approvable
+    (impl notes §3).
+    """
+    try:
+        worker_context = await _build_worker_context_with_optional_auth(ctx)
+    except Exception:  # noqa: BLE001
+        LOGGER.debug("workday_auth_not_available_for_approvals")
+        return []
+    tasks = await _fetch_inbox_tasks(
+        worker_context.workday_access_token, worker_context.workday_id
+    )
+    return [t for t in tasks if t.get("stepType") == "Approval"]
+
+
+async def provider_list_learning(ctx=None) -> List[Dict[str, Any]]:
+    """List Workday required learning assignments for TaskServer normalization."""
+    try:
+        worker_context = await _build_worker_context_with_optional_auth(ctx)
+    except Exception:  # noqa: BLE001
+        LOGGER.debug("workday_auth_not_available_for_learning")
+        return []
+    return await _fetch_learning_assignments(
+        worker_context.workday_access_token, worker_context.workday_id
+    )
+
+
+async def provider_get_approval_detail(
+    task_id: str, ctx=None
+) -> Dict[str, Any]:
+    """Get detail for a specific Workday inbox task."""
+    worker_context = await _build_worker_context_with_optional_auth(ctx)
+    url = (
+        "https://wd2-impl-services1.workday.com/ccx/api/common/v1/microsoft_dpt6/"
+        f"workers/{worker_context.workday_id}/inboxTasks/{task_id}"
+    )
+    data = await _fetch_json(url, worker_context.workday_access_token)
+    return {
+        "title": data.get("descriptor", ""),
+        "summary": data.get("overallProcess", {}).get("descriptor", ""),
+        "status": data.get("status", {}).get("descriptor", ""),
+        "stepType": data.get("stepType", {}).get("descriptor", ""),
+        "initiator": data.get("initiator", {}).get("descriptor", ""),
+        "assigned": data.get("assigned"),
+        "due": data.get("due"),
+        "taskId": task_id,
+        "raw": data,
+    }
+
+
+async def provider_execute_approval(
+    task_id: str, decision: str, comment: str = "", ctx=None
+) -> Dict[str, Any]:
+    """Approve or reject a Workday inbox task.
+
+    Only works for tasks with stepType == Approval.  Approve/reject APIs
+    will fail if stepType is not Approval (impl notes §3).
+    """
+    worker_context = await _build_worker_context_with_optional_auth(ctx)
+    action = "approve" if decision == "approve" else "deny"
+    url = (
+        "https://wd2-impl-services1.workday.com/ccx/api/common/v1/microsoft_dpt6/"
+        f"workers/{worker_context.workday_id}/inboxTasks/{task_id}/{action}"
+    )
+    headers = {
+        "Authorization": f"Bearer {worker_context.workday_access_token}",
+        "Content-Type": "application/json",
+    }
+    body: Dict[str, Any] = {}
+    if comment:
+        body["comment"] = comment
+
+    async with create_async_client() as client:
+        response = await client.post(url, json=body, headers=headers)
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "")
+        if "application/json" in content_type and response.content:
+            result = response.json()
+        else:
+            result = {"status": "completed"}
+
+    return {
+        "success": True,
+        "decision": decision,
+        "taskId": task_id,
+        "result": result,
+    }
 
 
 WORKDAY_TOOL_SPECS: List[Dict[str, Any]] = [
-    {"name": "get_worker", "func": tool_get_worker, "summary": "Get the current Workday worker profile."},
-    {"name": "get_leave_balances", "func": tool_get_leave_balances, "summary": "Retrieve leave balances and related data."},
+    {
+        "name": "get_worker",
+        "func": tool_get_worker,
+        "summary": "Get the current Workday worker profile. Result is rendered as an interactive widget.",
+        "annotations": {
+            "readOnlyHint": True,
+        },
+        "meta": {
+            "openai/outputTemplate": "ui://widget/worker-profile.html",
+            "openai/toolInvocation/invoking": "Loading worker profile\u2026",
+            "openai/toolInvocation/invoked": "Worker profile ready.",
+        },
+    },
+    {"name": "get_leave_balances", "func": tool_get_leave_balances, "summary": "Retrieve leave balances and eligible absence types for the current worker. The response includes eligibleAbsenceTypes[].id — use this ID as timeOffTypeId when calling prepare_request_leave."},
     {"name": "get_direct_reports", "func": tool_get_direct_reports, "summary": "List direct reports for the current worker."},
     {"name": "get_inbox_tasks", "func": tool_get_inbox_tasks, "summary": "List Workday inbox tasks for the current worker."},
-    {"name": "get_learning_assignments", "func": tool_get_learning_assignments, "summary": "Retrieve required learning assignments."},
+    {
+        "name": "get_learning_assignments",
+        "func": tool_get_learning_assignments,
+        "summary": "Retrieve required learning assignments. Result is rendered as an interactive widget.",
+        "annotations": {"readOnlyHint": True},
+        "meta": {
+            "openai/outputTemplate": "ui://widget/learning-assignments.html",
+            "openai/toolInvocation/invoking": "Loading learning assignments\u2026",
+            "openai/toolInvocation/invoked": "Learning assignments ready.",
+        },
+    },
     {"name": "get_pay_slips", "func": tool_get_pay_slips, "summary": "List recent Workday pay slips."},
     {"name": "get_time_off_entries", "func": tool_get_time_off_entries, "summary": "List time off entries for the current worker."},
-    {"name": "prepare_request_leave", "func": tool_prepare_request_leave, "summary": "Prepare the data needed to submit a leave request."},
-    {"name": "book_leave", "func": tool_book_leave, "summary": "Submit a leave request to Workday for the current worker."},
-    {"name": "change_business_title", "func": tool_change_business_title, "summary": "Request a business title change for the current worker."},
+    {
+        "name": "prepare_request_leave",
+        "func": tool_prepare_request_leave,
+        "summary": "Prepare the data needed to submit a leave request. Pass startDate (YYYY-MM-DD), endDate (YYYY-MM-DD), quantity (number of hours or days), unit ('Hours' or 'Days'), and timeOffTypeId from eligibleAbsenceTypes[].id (from get_leave_balances). The widget renders and lets the user confirm before submitting.",
+        "meta": {
+            "openai/outputTemplate": "ui://widget/leave-booking.html",
+            "openai/toolInvocation/invoking": "Preparing leave request\u2026",
+            "openai/toolInvocation/invoked": "Leave request ready.",
+        },
+    },
+    {"name": "book_leave", "func": tool_book_leave, "summary": "Submit a leave request to Workday. Called by the leave-booking widget when the user clicks Submit. Use prepare_request_leave first to display the booking form."},
+    {
+        "name": "prepare_change_business_title",
+        "func": tool_prepare_change_business_title,
+        "summary": (
+            "Show the business title change form for the current worker. "
+            "The widget handles submission."
+        ),
+        "annotations": {"readOnlyHint": True},
+        "meta": {
+            "openai/outputTemplate": "ui://widget/change-business-title.html",
+            "openai/toolInvocation/invoking": "Loading business title form\u2026",
+            "openai/toolInvocation/invoked": "Business title form ready.",
+        },
+    },
+    {
+        "name": "change_business_title",
+        "func": tool_change_business_title,
+        "summary": (
+            "Submit a business title change request to Workday. "
+            "Called by the change-business-title widget when the user clicks Submit. "
+            "Use prepare_change_business_title first."
+        ),
+    },
     {"name": "search_learning_content", "func": tool_search_learning_content, "summary": "Search Workday learning content and fetch associated lessons."},
 ]

@@ -114,6 +114,21 @@ class WorkerContext:
     worker_data: Dict[str, Any]
 
 
+async def build_worker_context_anonymous(employee_id: str) -> WorkerContext:
+    """Build worker context using a pre-configured employee ID without authentication."""
+    LOGGER.info("building_anonymous_worker_context", employee_id=employee_id)
+    access_token = await get_workday_access_token()
+    worker_data = await search_worker_in_workday(access_token, employee_id)
+    workday_id = worker_data.get("id", employee_id)
+    return WorkerContext(
+        payload={},  # No auth token payload in anonymous mode
+        worker_id=employee_id,
+        workday_id=workday_id,
+        workday_access_token=access_token,
+        worker_data=worker_data,
+    )
+
+
 async def build_worker_context(token: str, validator: Optional[EntraTokenValidator] = None) -> WorkerContext:
     validator = validator or EntraTokenValidator()
     payload = await validator.validate(token)

@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "name": "workday-worker-profile",
+  "display_name": "Workday Worker Profile",
+  "description": "Shows the signed-in worker's profile by calling the workday/get_worker MCP tool.",
+  "category": "dashboard",
+  "entrypoint": {
+    "type": "web",
+    "url": "http://localhost:5173"
+  },
+  "permissions": [
+    "mcp.call_tool"
+  ],
+  "resources": [
+    {
+      "type": "mcp_tool",
+      "server": "workday",
+      "tool": "get_worker",
+      "display_name": "Workday get_worker",
+      "description": "Returns the current worker context derived from the invoking Entra token."
+    }
+  ],
+  "ui": {
+    "technology": "react",
+    "bundle": {
+      "build": "npm run build",
+      "devServer": "npm run dev"
+    }
+  }
+}

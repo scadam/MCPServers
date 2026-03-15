@@ -13,6 +13,9 @@ appPackage/build
 .venv/
 .env/
 .env.workday
+.env.salesforce
+mcp_servers/.env.*
+*.bak
 __pycache__/
 *.py[cod]
 *.pyd
@@ -32,7 +35,6 @@ build/
 .mypy_cache/
 
 # Editor settings
-.vscode/
 
 # testing
 /coverage

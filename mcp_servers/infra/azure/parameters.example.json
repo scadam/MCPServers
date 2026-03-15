@@ -6,19 +6,19 @@
       "value": "eastus"
     },
     "environmentName": {
-      "value": "workday-mcp"
+      "value": "m365copilot-mcp"
     },
     "containerAppName": {
-      "value": "workday-mcp-app"
+      "value": "m365copilot-mcp-app"
     },
     "containerImage": {
-      "value": "ghcr.io/org/workday-mcp:latest"
+      "value": "ghcr.io/org/m365copilot-mcp:latest"
     },
     "envVars": {
       "value": [
         {
           "name": "MCP_SERVER",
-          "value": "workday"
+          "value": "all"
         }
       ]
     }

@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "name": "servicenow-create-incident",
+  "display_name": "ServiceNow Create Incident",
+  "description": "A form-based UI for creating ServiceNow incidents. Self-service fields are shown by default; expand the Service Desk section for additional fields. The LLM pre-populates the form from conversation context.",
+  "category": "form",
+  "entrypoint": {
+    "type": "web",
+    "url": "http://localhost:5174"
+  },
+  "permissions": [
+    "mcp.call_tool"
+  ],
+  "resources": [
+    {
+      "type": "mcp_tool",
+      "server": "servicenow",
+      "tool": "create_incident",
+      "display_name": "ServiceNow create_incident",
+      "description": "Creates a new ServiceNow incident. The LLM populates as many fields as possible from the conversation."
+    }
+  ],
+  "ui": {
+    "technology": "react",
+    "bundle": {
+      "build": "npm run build",
+      "devServer": "npm run dev"
+    }
+  }
+}
